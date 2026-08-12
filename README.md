@@ -1,6 +1,20 @@
-# CreditCrunch
+# <img src="Sources/CodexCreditsMenubar/Resources/CreditCrunch.png" width="48" alt="CreditCrunch app icon"> CreditCrunch
 
 A dependency-free macOS menu-bar app for the `spend_control` portion of Codex/ChatGPT usage. It deliberately displays no rate-limit, plan, credit-balance, or other response fields.
+
+## Quick start
+
+From the repository root, build CreditCrunch and link it into your Applications folder:
+
+```sh
+./scripts/build-and-link-app.sh
+```
+
+Launch it from the command line:
+
+```sh
+open "$HOME/Applications/CreditCrunch.app"
+```
 
 ## Build and run
 
@@ -20,9 +34,7 @@ open dist/CreditCrunch.app
 To rebuild and link the app into your Applications folder:
 
 ```sh
-chmod +x scripts/build-and-link-app.sh
-scripts/build-and-link-app.sh
-open ~/Applications/CreditCrunch.app
+./scripts/build-and-link-app.sh
 ```
 
 The app has no Dock icon. Its Applications/Finder icon uses the bundled CreditCrunch artwork, while its menu-bar icon uses a 16-dot usage progress ring. Dots fill clockwise from 12:00 (25% reaches 3:00; 50% reaches 6:00); the color starts green at 0% usage, moves through yellow, and reaches red near 100% usage. Its menu shows spend limit, spent, remaining, remaining percentage, reset value when provided, last update, Refresh Now, Preferences, and Quit.

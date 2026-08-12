@@ -35,6 +35,8 @@ Status: `planned` means designed but not started; `ready` means unblocked; `done
 | P18 | done | Rename the user-facing menu-bar app to CreditCrunch. | — | The application bundle, executable, macOS display name, menu text, preferences, cache-clear copy, and build/run documentation use CreditCrunch. Stable internal identifiers remain unchanged to preserve existing local data. |
 | P19 | done | Add a build-and-link script for the local Applications folder. | P18 | `scripts/build-and-link-app.sh` rebuilds CreditCrunch and creates `~/Applications/CreditCrunch.app` as a symlink, refusing to replace a non-symlink app bundle. |
 | P20 | done | Add the supplied CreditCrunch artwork as the macOS app icon. | P18 | The build copies `CreditCrunch.icns` into the app bundle and declares it with `CFBundleIconFile`; the linked Applications bundle contains the icon. |
+| P21 | done | Add a top-level quick start guide. | P19 | README leads with the build-and-link command and the `open "$HOME/Applications/CreditCrunch.app"` launch command. |
+| P22 | done | Add the app icon beside the README title. | P20 | README renders the bundled CreditCrunch artwork from a GitHub-compatible PNG asset beside the app name. |
 
 ## Hardening
 
