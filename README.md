@@ -23,4 +23,6 @@ The app has no Dock icon. Its Applications/Finder icon uses the bundled CreditCr
 At each refresh the app reads `~/.codex/auth.json`, or `CODEX_AUTH_FILE` when set. It accepts either snake_case or camelCase access-token/account-ID keys under `tokens`. The account header is sent only when an account ID exists.
 
 ## Screenshots
-<img width="399" alt="image" src="https://github.com/user-attachments/assets/b9a3f796-b6f7-42b4-9211-d1237485d867" />
+<img width="400" alt="CreditCrunch app over target" src="https://github.com/user-attachments/assets/b9a3f796-b6f7-42b4-9211-d1237485d867" />
+<img width="424"  alt="CreditCrunch app under target" src="https://github.com/user-attachments/assets/9e09aaa2-a3df-4589-91e7-7defe84c6301" />
+
