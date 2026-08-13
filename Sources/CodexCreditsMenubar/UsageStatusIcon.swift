@@ -1,5 +1,6 @@
 import AppKit
 
+@MainActor
 enum UsageStatusIcon {
     static func make(usagePercent: Double?) -> NSImage {
         let size = NSSize(width: 22, height: 22)

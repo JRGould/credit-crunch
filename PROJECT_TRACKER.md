@@ -7,6 +7,7 @@ Status: `planned` means designed but not started; `ready` means unblocked; `done
 | ID | Status | Task | Evidence |
 | --- | --- | --- | --- |
 | D1 | done | Add a local-only Debug usage-ring simulation that advances 0% to 100% over 30 seconds and restores actual usage after five seconds. | Pure progress math is covered by unit tests; no account data is changed or persisted. |
+| P23 | done | Restore Swift 5.9 toolchain compatibility and isolate the AppKit status icon on the main actor. | `Package.swift` declares Swift tools 5.9 and Swift 5 language mode; `UsageStatusIcon` is `@MainActor`. `swift test` (50), strict-concurrency `swift build`, `swift build`, `scripts/build-app.sh`, and `git diff --check` passed on 2026-08-13. |
 
 ## Now
 

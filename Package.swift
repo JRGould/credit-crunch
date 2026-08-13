@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 5.9
 import PackageDescription
 
 let package = Package(
@@ -10,5 +10,6 @@ let package = Package(
     targets: [
         .executableTarget(name: "CodexCreditsMenubar", resources: [.process("Resources")]),
         .testTarget(name: "CodexCreditsMenubarTests", dependencies: ["CodexCreditsMenubar"])
-    ]
+    ],
+    swiftLanguageVersions: [.v5]
 )
