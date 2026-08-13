@@ -2,6 +2,27 @@
 
 <p align=center>A macOS menu-bar app to help you keep track of your credit usage.</p>
 
+## Download
+
+Download the latest Apple Silicon build: [CreditCrunch-macos-arm64.zip](https://github.com/JRGould/credit-crunch/releases/latest/download/CreditCrunch-macos-arm64.zip)
+
+Unzip the download and move `CreditCrunch.app` to your Applications folder. This build requires macOS 13 or later and runs on Apple Silicon Macs.
+
+Because this release is distributed outside the App Store without Apple Developer ID signing and notarization, macOS may block the first launch. If you trust the build, use either method below after moving the app to Applications.
+
+### Terminal
+
+```sh
+xattr -dr com.apple.quarantine "/Applications/CreditCrunch.app"
+open "/Applications/CreditCrunch.app"
+```
+
+### Finder and System Settings
+
+1. Try to open `CreditCrunch.app` once.
+2. Open **System Settings** → **Privacy & Security**.
+3. Click **Open Anyway**, then confirm that you want to open the app.
+
 ## Quick start
 
 1. From the repository root, build CreditCrunch and link it into your Applications folder:
@@ -25,4 +46,3 @@ At each refresh the app reads `~/.codex/auth.json`, or `CODEX_AUTH_FILE` when se
 ## Screenshots
 <img width="400" alt="CreditCrunch app over target" src="https://github.com/user-attachments/assets/b9a3f796-b6f7-42b4-9211-d1237485d867" />
 <img width="424"  alt="CreditCrunch app under target" src="https://github.com/user-attachments/assets/9e09aaa2-a3df-4589-91e7-7defe84c6301" />
-
