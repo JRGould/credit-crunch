@@ -10,14 +10,20 @@ final class AppDelegateTests: XCTestCase {
         XCTAssertTrue(foregroundNotificationPresentationOptions.contains(.sound))
     }
 
+    func testNotificationPreferencesRequireAuthorization() {
+        XCTAssertTrue(notificationPreferencesAvailable(for: .authorized))
+        XCTAssertTrue(notificationPreferencesAvailable(for: .provisional))
+        XCTAssertFalse(notificationPreferencesAvailable(for: .notDetermined))
+        XCTAssertFalse(notificationPreferencesAvailable(for: .denied))
+    }
+
     @MainActor
     func testClosingPreferencesHidesAndReusesItsWindow() {
         let delegate = AppDelegate(notificationCoordinator: UsageNotificationCoordinator(
             notifier: RecordingNotifier(),
             deduplicator: RecordingDeduplicator()
         ))
-        let showPreferences = NSSelectorFromString("showPreferences")
-        _ = delegate.perform(showPreferences)
+        delegate.presentPreferences(notificationAuthorizationStatus: .authorized)
         guard let window = NSApp.windows.first(where: { $0.delegate === delegate }) else {
             return XCTFail("Preferences window was not created")
         }
@@ -26,7 +32,7 @@ final class AppDelegateTests: XCTestCase {
         XCTAssertFalse(delegate.windowShouldClose(window))
         XCTAssertFalse(window.isVisible)
 
-        _ = delegate.perform(showPreferences)
+        delegate.presentPreferences(notificationAuthorizationStatus: .authorized)
         XCTAssertTrue(window.isVisible)
         XCTAssertTrue(window === NSApp.windows.first(where: { $0.delegate === delegate }))
         window.delegate = nil

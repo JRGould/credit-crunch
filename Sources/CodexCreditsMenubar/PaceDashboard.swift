@@ -482,12 +482,12 @@ struct PaceDashboardModel: Equatable {
 final class PaceDashboardView: NSView {
     private struct HoverRegion {
         let rect: NSRect
-        let text: String
+        let text: NSAttributedString
     }
 
     private let model: PaceDashboardModel
     private var hoverRegions: [HoverRegion] = []
-    private var hoveredText: String?
+    private var hoveredText: NSAttributedString?
     private var hoverPoint: NSPoint?
     private var hoverTrackingArea: NSTrackingArea?
     private static let dayFormatter: DateFormatter = {
@@ -497,8 +497,8 @@ final class PaceDashboardView: NSView {
     }()
     private static let toolTipDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .none
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEE MM/dd"
         return formatter
     }()
 
@@ -674,49 +674,43 @@ final class PaceDashboardView: NSView {
         let content = bounds.insetBy(dx: 16, dy: 14)
         let chart = NSRect(x: content.minX, y: content.minY + 120, width: content.width, height: 92)
         let chartPlot = NSRect(x: chart.minX, y: chart.minY + 18, width: chart.width, height: chart.height - 42)
-        let chartMaximum = max(model.dailyTarget ?? 0, model.days.compactMap(\.actualUsage).max() ?? 0, 1)
         let chartStep = chartPlot.width / CGFloat(max(model.days.count, 1))
         for (index, day) in model.days.enumerated() {
             guard let actual = day.actualUsage else { continue }
-            let x = chartPlot.minX + CGFloat(index) * chartStep + 5
-            let width = max(8, chartStep - 10)
-            let height = max(2, chartPlot.height * CGFloat(actual / chartMaximum))
             hoverRegions.append(HoverRegion(
-                rect: NSRect(x: x, y: chartPlot.minY, width: width, height: height).insetBy(dx: -2, dy: -2),
-                text: "\(Self.toolTipDateFormatter.string(from: day.day)): \(CreditFormatter.format(actual)) credits used"
+                rect: NSRect(x: chartPlot.minX + CGFloat(index) * chartStep, y: chartPlot.minY, width: chartStep, height: chartPlot.height),
+                text: Self.toolTipText(day: day.day, usage: actual)
             ))
         }
 
         let period = NSRect(x: content.minX, y: content.minY + 18, width: content.width, height: 66)
         let days = model.billingPeriod.days
         guard !days.isEmpty else { return }
-        let periodMaximum = max(days.compactMap(\.actualUsage).max() ?? 0, days.compactMap(\.previousPeriodUsage).max() ?? 0, 1)
         let periodPlot = NSRect(x: period.minX, y: period.minY + 2, width: period.width, height: period.height - 20)
         let periodStep = periodPlot.width / CGFloat(days.count)
         for (index, day) in days.enumerated() {
-            let x = periodPlot.minX + CGFloat(index) * periodStep
-            let width = max(2, periodStep - 1)
-            let date = Self.toolTipDateFormatter.string(from: day.day)
-            if let previous = day.previousPeriodUsage {
-                let height = max(2, periodPlot.height * 0.72 * CGFloat(previous / periodMaximum))
-                hoverRegions.append(HoverRegion(
-                    rect: NSRect(x: x, y: periodPlot.minY, width: width, height: height).insetBy(dx: -1, dy: -2),
-                    text: "\(date): prior period \(CreditFormatter.format(previous)) credits"
-                ))
-            }
-            if let actual = day.actualUsage {
-                let height = max(3, periodPlot.height * CGFloat(actual / periodMaximum))
-                let currentWidth = max(2, width * 0.62)
-                hoverRegions.append(HoverRegion(
-                    rect: NSRect(x: x + (width - currentWidth) / 2, y: periodPlot.minY, width: currentWidth, height: height).insetBy(dx: -1, dy: -2),
-                    text: "\(date): current period \(CreditFormatter.format(actual)) credits"
-                ))
-            }
+            guard let actual = day.actualUsage else { continue }
+            hoverRegions.append(HoverRegion(
+                rect: NSRect(x: periodPlot.minX + CGFloat(index) * periodStep, y: periodPlot.minY, width: periodStep, height: periodPlot.height),
+                text: Self.toolTipText(day: day.day, usage: actual)
+            ))
         }
     }
 
-    func hoverText(at point: NSPoint) -> String? {
+    func hoverText(at point: NSPoint) -> NSAttributedString? {
         hoverRegions.last(where: { $0.rect.contains(point) })?.text
+    }
+
+    private static func toolTipText(day: Date, usage: Double) -> NSAttributedString {
+        let regular = NSFont.systemFont(ofSize: 11, weight: .medium)
+        let bold = NSFont.systemFont(ofSize: 11, weight: .bold)
+        let text = NSMutableAttributedString(
+            string: "\(toolTipDateFormatter.string(from: day)): ",
+            attributes: [.font: regular, .foregroundColor: NSColor.labelColor]
+        )
+        text.append(NSAttributedString(string: CreditFormatter.format(usage), attributes: [.font: bold, .foregroundColor: NSColor.labelColor]))
+        text.append(NSAttributedString(string: " Credits", attributes: [.font: regular, .foregroundColor: NSColor.labelColor]))
+        return text
     }
 
     private func updateHover(with event: NSEvent) {
@@ -726,9 +720,8 @@ final class PaceDashboardView: NSView {
         needsDisplay = true
     }
 
-    private func drawHoverBubble(_ text: String, near point: NSPoint) {
-        let font = NSFont.systemFont(ofSize: 11, weight: .medium)
-        let measured = (text as NSString).size(withAttributes: [.font: font])
+    private func drawHoverBubble(_ text: NSAttributedString, near point: NSPoint) {
+        let measured = text.size()
         let size = NSSize(width: min(measured.width + 16, bounds.width - 12), height: 26)
         var origin = NSPoint(x: point.x - size.width / 2, y: point.y + 10)
         origin.x = min(max(origin.x, bounds.minX + 6), bounds.maxX - size.width - 6)
@@ -740,7 +733,7 @@ final class PaceDashboardView: NSView {
         let path = NSBezierPath(roundedRect: bubble, xRadius: 6, yRadius: 6)
         path.fill()
         path.stroke()
-        drawText(text, in: bubble.insetBy(dx: 8, dy: 6), font: font, color: .labelColor, alignment: .center)
+        text.draw(in: bubble.insetBy(dx: 8, dy: 6))
     }
 
     private func drawText(_ text: String, in rect: NSRect, font: NSFont, color: NSColor, alignment: NSTextAlignment = .left) {

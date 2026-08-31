@@ -3,6 +3,10 @@ import UserNotifications
 
 let foregroundNotificationPresentationOptions: UNNotificationPresentationOptions = [.banner, .list, .sound]
 
+func notificationPreferencesAvailable(for status: UNAuthorizationStatus) -> Bool {
+    status == .authorized || status == .provisional
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNotificationCenterDelegate {
     private let settings = AppSettings()
@@ -18,6 +22,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     private var simulatedUsagePercent: Double?
     private var simulationTask: Task<Void, Never>?
     private var analyticsBackfillTask: Task<Void, Never>?
+    private var notificationPreferenceControls: [NSControl] = []
+    private weak var notificationPermissionLabel: NSTextField?
 
     init(notificationCoordinator: UsageNotificationCoordinator? = nil) {
         self.notificationCoordinator = notificationCoordinator ?? UsageNotificationCoordinator(
@@ -181,7 +187,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     }
 
     @objc private func showPreferences() {
+        Task {
+            let center = UNUserNotificationCenter.current()
+            var status = await center.notificationSettings().authorizationStatus
+            if status == .notDetermined {
+                _ = try? await center.requestAuthorization(options: [.alert, .sound])
+                status = await center.notificationSettings().authorizationStatus
+            }
+            presentPreferences(notificationAuthorizationStatus: status)
+        }
+    }
+
+    func presentPreferences(notificationAuthorizationStatus: UNAuthorizationStatus) {
         if let preferencesWindow {
+            updateNotificationPreferenceAvailability(notificationAuthorizationStatus)
             NSApp.activate(ignoringOtherApps: true)
             preferencesWindow.makeKeyAndOrderFront(nil)
             return
@@ -195,15 +214,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         let note = NSTextField(labelWithString: "Credentials are read only when refreshing and are never stored.")
         note.frame = NSRect(x: 20, y: 18, width: 390, height: 20); note.font = .systemFont(ofSize: 11); view.addSubview(note)
         let notificationHeading = NSTextField(labelWithString: "Notifications")
-        notificationHeading.frame = NSRect(x: 20, y: 520, width: 240, height: 22); notificationHeading.font = .boldSystemFont(ofSize: 13); view.addSubview(notificationHeading)
+        notificationHeading.frame = NSRect(x: 20, y: 520, width: 120, height: 22); notificationHeading.font = .boldSystemFont(ofSize: 13); view.addSubview(notificationHeading)
+        let permission = NSTextField(labelWithString: "Notification permission is required to edit these options.")
+        permission.frame = NSRect(x: 140, y: 520, width: 270, height: 22); permission.font = .systemFont(ofSize: 10); permission.textColor = .systemRed; view.addSubview(permission)
+        notificationPermissionLabel = permission
         let dailyNotifications = NSButton(checkboxWithTitle: "Notify as daily usage approaches its target", target: self, action: #selector(changeDailyNotifications(_:)))
         dailyNotifications.frame = NSRect(x: 20, y: 484, width: 350, height: 24); dailyNotifications.state = settings.dailyNotificationsEnabled ? .on : .off; view.addSubview(dailyNotifications)
-        addLabel("Daily alert threshold (% used)", y: 442, to: view)
-        addField(value: settings.dailyNotificationThresholdPercent, y: 437, tag: 5, to: view)
+        let dailyLabel = addLabel("Daily alert threshold (% used)", y: 442, to: view)
+        let dailyField = addField(value: settings.dailyNotificationThresholdPercent, y: 437, tag: 5, to: view)
         let notifications = NSButton(checkboxWithTitle: "Notify as billing-period usage approaches its limit", target: self, action: #selector(changeNotifications(_:)))
         notifications.frame = NSRect(x: 20, y: 404, width: 350, height: 24); notifications.state = settings.notificationsEnabled ? .on : .off; view.addSubview(notifications)
-        addLabel("Period alert threshold (% remaining)", y: 362, to: view)
-        addField(value: settings.notificationThresholdPercent, y: 357, tag: 1, to: view)
+        let periodLabel = addLabel("Period alert threshold (% remaining)", y: 362, to: view)
+        let periodField = addField(value: settings.notificationThresholdPercent, y: 357, tag: 1, to: view)
+        notificationPreferenceControls = [dailyNotifications, dailyLabel, dailyField, notifications, periodLabel, periodField]
+        updateNotificationPreferenceAvailability(notificationAuthorizationStatus)
         addLabel("History retention (samples)", y: 318, to: view)
         addField(value: settings.historyRetentionLimit, y: 313, tag: 2, to: view)
         let clear = NSButton(title: "Clear Local History…", target: self, action: #selector(confirmClearHistory))
@@ -219,6 +243,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 430, height: 550), styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "CreditCrunch Preferences"; window.contentView = view; window.delegate = self; window.center(); NSApp.activate(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
         preferencesWindow = window
+    }
+
+    private func updateNotificationPreferenceAvailability(_ status: UNAuthorizationStatus) {
+        let available = notificationPreferencesAvailable(for: status)
+        notificationPreferenceControls.forEach { $0.isEnabled = available }
+        notificationPermissionLabel?.isHidden = available
+        notificationPermissionLabel?.stringValue = status == .denied
+            ? "Allow CreditCrunch in System Settings > Notifications to edit these options."
+            : "Notification permission is required to edit these options."
+        guard !available else { return }
+        settings.dailyNotificationsEnabled = false
+        settings.notificationsEnabled = false
+        notificationPreferenceControls.compactMap { $0 as? NSButton }.forEach { $0.state = .off }
     }
 
     @objc private func changeInterval(_ sender: NSPopUpButton) {
@@ -320,17 +357,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         rebuildMenu()
     }
 
-    private func addLabel(_ text: String, y: CGFloat, to view: NSView) {
+    @discardableResult
+    private func addLabel(_ text: String, y: CGFloat, to view: NSView) -> NSTextField {
         let label = NSTextField(labelWithString: text)
         label.frame = NSRect(x: 20, y: y, width: 275, height: 24)
         view.addSubview(label)
+        return label
     }
 
-    private func addField(value: Int, y: CGFloat, tag: Int, to view: NSView) {
+    @discardableResult
+    private func addField(value: Int, y: CGFloat, tag: Int, to view: NSView) -> NSTextField {
         let field = NSTextField(string: String(value))
         field.frame = NSRect(x: 310, y: y, width: 90, height: 26)
         field.tag = tag; field.target = self; field.action = #selector(changeNumberSetting(_:))
         view.addSubview(field)
+        return field
     }
 
     private func valueForField(_ tag: Int) -> String {

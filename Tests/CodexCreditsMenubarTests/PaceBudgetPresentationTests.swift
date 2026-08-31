@@ -28,7 +28,7 @@ final class PaceBudgetPresentationTests: XCTestCase {
             todayUsage: 10,
             dailyTarget: 10,
             days: (0..<7).map {
-                PaceDashboardDay(day: day.addingTimeInterval(Double($0) * 86_400), actualUsage: 10)
+                PaceDashboardDay(day: day.addingTimeInterval(Double($0) * 86_400), actualUsage: $0 == 0 ? 2 : 10)
             },
             billingPeriod: PaceDashboardBillingPeriod(
                 totalUsage: 10,
@@ -36,14 +36,21 @@ final class PaceBudgetPresentationTests: XCTestCase {
                 resetAt: nil,
                 usageText: "Used 10 of 100",
                 resetText: "Reset unavailable",
-                days: [PaceDashboardPeriodDay(day: day, actualUsage: 7, previousPeriodUsage: 5)]
+                days: [PaceDashboardPeriodDay(day: day, actualUsage: 3, previousPeriodUsage: 7)]
             )
         )
         let view = PaceDashboardView(model: model)
 
-        XCTAssertTrue(view.hoverText(at: NSPoint(x: 25, y: 153))?.contains("10 credits used") == true)
-        XCTAssertTrue(view.hoverText(at: NSPoint(x: 20, y: 35))?.contains("prior period 5 credits") == true)
-        XCTAssertTrue(view.hoverText(at: NSPoint(x: 180, y: 35))?.contains("current period 7 credits") == true)
+        let daily = view.hoverText(at: NSPoint(x: 25, y: 195))
+        XCTAssertNotNil(daily?.string.range(of: #"^[A-Z][a-z]{2} \d{2}/\d{2}: 2 Credits$"#, options: .regularExpression))
+        let amountMarker = (daily?.string as NSString?)?.range(of: ": 2 Credits") ?? NSRange(location: NSNotFound, length: 0)
+        let amountIndex = amountMarker.location == NSNotFound ? NSNotFound : amountMarker.location + 2
+        let amountFont = amountIndex == NSNotFound ? nil : daily?.attribute(.font, at: amountIndex, effectiveRange: nil) as? NSFont
+        XCTAssertTrue(amountFont?.fontDescriptor.symbolicTraits.contains(.bold) == true)
+
+        let period = view.hoverText(at: NSPoint(x: 20, y: 75))
+        XCTAssertNotNil(period?.string.range(of: #"^[A-Z][a-z]{2} \d{2}/\d{2}: 3 Credits$"#, options: .regularExpression))
+        XCTAssertFalse(period?.string.localizedCaseInsensitiveContains("prior") == true)
     }
 
     private var utc: Calendar {
