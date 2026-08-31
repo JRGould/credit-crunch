@@ -190,11 +190,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         Task {
             let center = UNUserNotificationCenter.current()
             var status = await center.notificationSettings().authorizationStatus
+            var authorizationError: Error?
             if status == .notDetermined {
-                _ = try? await center.requestAuthorization(options: [.alert, .sound])
+                do {
+                    _ = try await center.requestAuthorization(options: [.alert, .sound])
+                } catch {
+                    authorizationError = error
+                }
                 status = await center.notificationSettings().authorizationStatus
             }
             presentPreferences(notificationAuthorizationStatus: status)
+            if let authorizationError {
+                showNotificationUnavailable("macOS could not request notification permission: \(authorizationError.localizedDescription)")
+            }
         }
     }
 
@@ -323,10 +331,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         }
     }
 
-    private func showNotificationUnavailable() {
+    private func showNotificationUnavailable(_ message: String = "Allow CreditCrunch in System Settings > Notifications, then try again.") {
         let alert = NSAlert()
         alert.messageText = "CreditCrunch notifications are disabled"
-        alert.informativeText = "Allow CreditCrunch in System Settings > Notifications, then try again."
+        alert.informativeText = message
         alert.addButton(withTitle: "OK")
         alert.runModal()
     }

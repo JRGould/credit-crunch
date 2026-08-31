@@ -28,4 +28,6 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
   <key>LSUIElement</key><true/>
 </dict></plist>
 PLIST
+codesign --force --sign - "$app"
+codesign --verify --strict "$app"
 echo "Built $app"
