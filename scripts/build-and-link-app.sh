@@ -3,7 +3,7 @@ set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 app="$root/dist/CreditCrunch.app"
-applications_directory="$HOME/Applications"
+applications_directory="/Applications"
 link="$applications_directory/CreditCrunch.app"
 
 "$root/scripts/build-app.sh"
