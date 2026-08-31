@@ -480,8 +480,16 @@ struct PaceDashboardModel: Equatable {
 }
 
 final class PaceDashboardView: NSView {
+    private struct HoverRegion {
+        let rect: NSRect
+        let text: String
+    }
+
     private let model: PaceDashboardModel
-    private var toolTipTextByTag: [NSView.ToolTipTag: String] = [:]
+    private var hoverRegions: [HoverRegion] = []
+    private var hoveredText: String?
+    private var hoverPoint: NSPoint?
+    private var hoverTrackingArea: NSTrackingArea?
     private static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "EE"
@@ -499,15 +507,43 @@ final class PaceDashboardView: NSView {
         super.init(frame: NSRect(x: 0, y: 0, width: 360, height: 380))
         setAccessibilityLabel(model.summary)
         setAccessibilityRole(.group)
-        installToolTips()
+        installHoverRegions()
     }
 
     required init?(coder: NSCoder) { nil }
 
     override var intrinsicContentSize: NSSize { NSSize(width: 360, height: 380) }
 
-    func view(_ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint, userData data: UnsafeMutableRawPointer?) -> String {
-        toolTipTextByTag[tag] ?? "Usage unavailable"
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        window?.acceptsMouseMovedEvents = true
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTrackingArea { removeTrackingArea(hoverTrackingArea) }
+        let area = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect, .enabledDuringMouseDrag],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        hoverTrackingArea = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        updateHover(with: event)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        updateHover(with: event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        hoveredText = nil
+        hoverPoint = nil
+        needsDisplay = true
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -534,6 +570,7 @@ final class PaceDashboardView: NSView {
         drawText("Billing period", in: NSRect(x: bounds.minX, y: bounds.minY + 94, width: 100, height: 16), font: .systemFont(ofSize: 12, weight: .semibold), color: .labelColor)
         drawText(model.billingPeriod.usageText, in: NSRect(x: bounds.minX + 100, y: bounds.minY + 94, width: bounds.width - 100, height: 16), font: .systemFont(ofSize: 11), color: .secondaryLabelColor, alignment: .right)
         drawPeriodStrip(in: NSRect(x: bounds.minX, y: bounds.minY + 18, width: bounds.width, height: 66))
+        if let hoveredText, let hoverPoint { drawHoverBubble(hoveredText, near: hoverPoint) }
     }
 
     private func drawPacing(in bounds: NSRect) {
@@ -633,7 +670,7 @@ final class PaceDashboardView: NSView {
         drawText(resetText, in: NSRect(x: rect.midX, y: rect.maxY - 13, width: rect.width / 2, height: 13), font: .systemFont(ofSize: 10), color: .tertiaryLabelColor, alignment: .right)
     }
 
-    private func installToolTips() {
+    private func installHoverRegions() {
         let content = bounds.insetBy(dx: 16, dy: 14)
         let chart = NSRect(x: content.minX, y: content.minY + 120, width: content.width, height: 92)
         let chartPlot = NSRect(x: chart.minX, y: chart.minY + 18, width: chart.width, height: chart.height - 42)
@@ -644,10 +681,10 @@ final class PaceDashboardView: NSView {
             let x = chartPlot.minX + CGFloat(index) * chartStep + 5
             let width = max(8, chartStep - 10)
             let height = max(2, chartPlot.height * CGFloat(actual / chartMaximum))
-            addToolTip(
-                for: NSRect(x: x, y: chartPlot.minY, width: width, height: height).insetBy(dx: -2, dy: -2),
+            hoverRegions.append(HoverRegion(
+                rect: NSRect(x: x, y: chartPlot.minY, width: width, height: height).insetBy(dx: -2, dy: -2),
                 text: "\(Self.toolTipDateFormatter.string(from: day.day)): \(CreditFormatter.format(actual)) credits used"
-            )
+            ))
         }
 
         let period = NSRect(x: content.minX, y: content.minY + 18, width: content.width, height: 66)
@@ -662,25 +699,48 @@ final class PaceDashboardView: NSView {
             let date = Self.toolTipDateFormatter.string(from: day.day)
             if let previous = day.previousPeriodUsage {
                 let height = max(2, periodPlot.height * 0.72 * CGFloat(previous / periodMaximum))
-                addToolTip(
-                    for: NSRect(x: x, y: periodPlot.minY, width: width, height: height).insetBy(dx: -1, dy: -2),
-                    text: "\(date): \(CreditFormatter.format(previous)) credits in the prior-period comparison"
-                )
+                hoverRegions.append(HoverRegion(
+                    rect: NSRect(x: x, y: periodPlot.minY, width: width, height: height).insetBy(dx: -1, dy: -2),
+                    text: "\(date): prior period \(CreditFormatter.format(previous)) credits"
+                ))
             }
             if let actual = day.actualUsage {
                 let height = max(3, periodPlot.height * CGFloat(actual / periodMaximum))
                 let currentWidth = max(2, width * 0.62)
-                addToolTip(
-                    for: NSRect(x: x + (width - currentWidth) / 2, y: periodPlot.minY, width: currentWidth, height: height).insetBy(dx: -1, dy: -2),
-                    text: "\(date): \(CreditFormatter.format(actual)) credits in the current period"
-                )
+                hoverRegions.append(HoverRegion(
+                    rect: NSRect(x: x + (width - currentWidth) / 2, y: periodPlot.minY, width: currentWidth, height: height).insetBy(dx: -1, dy: -2),
+                    text: "\(date): current period \(CreditFormatter.format(actual)) credits"
+                ))
             }
         }
     }
 
-    private func addToolTip(for rect: NSRect, text: String) {
-        let tag = addToolTip(rect, owner: self, userData: nil)
-        toolTipTextByTag[tag] = text
+    func hoverText(at point: NSPoint) -> String? {
+        hoverRegions.last(where: { $0.rect.contains(point) })?.text
+    }
+
+    private func updateHover(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        hoveredText = hoverText(at: point)
+        hoverPoint = hoveredText == nil ? nil : point
+        needsDisplay = true
+    }
+
+    private func drawHoverBubble(_ text: String, near point: NSPoint) {
+        let font = NSFont.systemFont(ofSize: 11, weight: .medium)
+        let measured = (text as NSString).size(withAttributes: [.font: font])
+        let size = NSSize(width: min(measured.width + 16, bounds.width - 12), height: 26)
+        var origin = NSPoint(x: point.x - size.width / 2, y: point.y + 10)
+        origin.x = min(max(origin.x, bounds.minX + 6), bounds.maxX - size.width - 6)
+        if origin.y + size.height > bounds.maxY - 6 { origin.y = point.y - size.height - 10 }
+        origin.y = min(max(origin.y, bounds.minY + 6), bounds.maxY - size.height - 6)
+        let bubble = NSRect(origin: origin, size: size)
+        NSColor.controlBackgroundColor.setFill()
+        NSColor.separatorColor.setStroke()
+        let path = NSBezierPath(roundedRect: bubble, xRadius: 6, yRadius: 6)
+        path.fill()
+        path.stroke()
+        drawText(text, in: bubble.insetBy(dx: 8, dy: 6), font: font, color: .labelColor, alignment: .center)
     }
 
     private func drawText(_ text: String, in rect: NSRect, font: NSFont, color: NSColor, alignment: NSTextAlignment = .left) {

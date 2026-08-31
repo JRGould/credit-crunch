@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import XCTest
 @testable import CodexCreditsMenubar
 
@@ -15,6 +15,35 @@ final class PaceBudgetPresentationTests: XCTestCase {
         XCTAssertTrue(lines.contains("Days left: 5 calendar, 3 workdays"))
         XCTAssertTrue(lines.contains("Pace: pull back by 3/workday"))
         XCTAssertTrue(lines.contains("Projected reset balance: 10"))
+    }
+
+    @MainActor
+    func testGraphBarsExposeUsageAtTheirHoverPoints() {
+        let day = date(day: 1, hour: 0)
+        let model = PaceDashboardModel(
+            status: .underTarget,
+            decision: "On target",
+            remainingCredits: 90,
+            remainingWorkdays: 5,
+            todayUsage: 10,
+            dailyTarget: 10,
+            days: (0..<7).map {
+                PaceDashboardDay(day: day.addingTimeInterval(Double($0) * 86_400), actualUsage: 10)
+            },
+            billingPeriod: PaceDashboardBillingPeriod(
+                totalUsage: 10,
+                periodLimit: 100,
+                resetAt: nil,
+                usageText: "Used 10 of 100",
+                resetText: "Reset unavailable",
+                days: [PaceDashboardPeriodDay(day: day, actualUsage: 7, previousPeriodUsage: 5)]
+            )
+        )
+        let view = PaceDashboardView(model: model)
+
+        XCTAssertTrue(view.hoverText(at: NSPoint(x: 25, y: 153))?.contains("10 credits used") == true)
+        XCTAssertTrue(view.hoverText(at: NSPoint(x: 20, y: 35))?.contains("prior period 5 credits") == true)
+        XCTAssertTrue(view.hoverText(at: NSPoint(x: 180, y: 35))?.contains("current period 7 credits") == true)
     }
 
     private var utc: Calendar {

@@ -1,8 +1,10 @@
 import AppKit
 import UserNotifications
 
+let foregroundNotificationPresentationOptions: UNNotificationPresentationOptions = [.banner, .list, .sound]
+
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNotificationCenterDelegate {
     private let settings = AppSettings()
     private var historyStore: FileUsageHistoryStore { FileUsageHistoryStore(retentionLimit: settings.historyRetentionLimit) }
     private let analyticsHistoryStore = FileAnalyticsDailyUsageStore()
@@ -26,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        UNUserNotificationCenter.current().delegate = self
         statusItem.button?.imagePosition = .imageOnly
         statusItem.button?.image = UsageStatusIcon.make(usagePercent: nil)
         statusItem.button?.toolTip = "Codex usage loading"
@@ -45,6 +48,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         timer?.invalidate()
         simulationTask?.cancel()
         analyticsBackfillTask?.cancel()
+    }
+
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        foregroundNotificationPresentationOptions
     }
 
     @objc private func refresh() {
@@ -222,16 +229,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func changeNotifications(_ sender: NSButton) {
         settings.notificationsEnabled = sender.state == .on
         guard settings.notificationsEnabled else { return }
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { [weak self] granted, _ in
-            if !granted { Task { @MainActor in self?.settings.notificationsEnabled = false } }
+        Task {
+            do {
+                guard try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) else {
+                    settings.notificationsEnabled = false
+                    sender.state = .off
+                    showNotificationUnavailable()
+                    return
+                }
+            } catch {
+                settings.notificationsEnabled = false
+                sender.state = .off
+                showNotificationUnavailable()
+            }
         }
     }
 
     @objc private func changeDailyNotifications(_ sender: NSButton) {
         settings.dailyNotificationsEnabled = sender.state == .on
         guard settings.dailyNotificationsEnabled else { return }
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { [weak self] granted, _ in
-            if !granted { Task { @MainActor in self?.settings.dailyNotificationsEnabled = false } }
+        Task {
+            do {
+                guard try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) else {
+                    settings.dailyNotificationsEnabled = false
+                    sender.state = .off
+                    showNotificationUnavailable()
+                    return
+                }
+            } catch {
+                settings.dailyNotificationsEnabled = false
+                sender.state = .off
+                showNotificationUnavailable()
+            }
         }
     }
 
@@ -244,12 +273,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func sendTestNotification(title: String, body: String) {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { [weak self] granted, _ in
-            guard granted else { return }
-            Task { @MainActor in
-                self?.notificationCoordinator.deliverTest(UsageNotificationDecision(identifier: "test-\(UUID().uuidString)", title: title, body: body))
+        Task {
+            do {
+                guard try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) else {
+                    showNotificationUnavailable()
+                    return
+                }
+                notificationCoordinator.deliverTest(UsageNotificationDecision(identifier: "test-\(UUID().uuidString)", title: title, body: body))
+            } catch {
+                showNotificationUnavailable()
             }
         }
+    }
+
+    private func showNotificationUnavailable() {
+        let alert = NSAlert()
+        alert.messageText = "CreditCrunch notifications are disabled"
+        alert.informativeText = "Allow CreditCrunch in System Settings > Notifications, then try again."
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     @objc private func changeNumberSetting(_ sender: NSTextField) {

@@ -1,8 +1,15 @@
 import AppKit
+import UserNotifications
 import XCTest
 @testable import CodexCreditsMenubar
 
 final class AppDelegateTests: XCTestCase {
+    func testForegroundNotificationsArePresented() {
+        XCTAssertTrue(foregroundNotificationPresentationOptions.contains(.banner))
+        XCTAssertTrue(foregroundNotificationPresentationOptions.contains(.list))
+        XCTAssertTrue(foregroundNotificationPresentationOptions.contains(.sound))
+    }
+
     @MainActor
     func testClosingPreferencesHidesAndReusesItsWindow() {
         let delegate = AppDelegate(notificationCoordinator: UsageNotificationCoordinator(
