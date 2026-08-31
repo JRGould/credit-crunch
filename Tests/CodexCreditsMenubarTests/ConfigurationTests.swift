@@ -18,8 +18,14 @@ final class ConfigurationTests: XCTestCase {
         let settings = AppSettings(defaults: defaults)
         settings.historyRetentionLimit = 1
         settings.notificationThresholdPercent = 0
+        settings.dailyNotificationThresholdPercent = 101
         XCTAssertEqual(settings.historyRetentionLimit, FileUsageHistoryStore.defaultRetentionLimit)
         XCTAssertEqual(settings.notificationThresholdPercent, 20)
+        XCTAssertEqual(settings.dailyNotificationThresholdPercent, 80)
+        settings.notificationsEnabled = true
+        settings.dailyNotificationsEnabled = true
+        XCTAssertTrue(settings.notificationsEnabled)
+        XCTAssertTrue(settings.dailyNotificationsEnabled)
         XCTAssertFalse(settings.analyticsBackfillCompleted)
         settings.analyticsBackfillCompleted = true
         XCTAssertTrue(settings.analyticsBackfillCompleted)

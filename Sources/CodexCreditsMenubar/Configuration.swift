@@ -19,9 +19,11 @@ struct RequestConfiguration: Equatable {
 final class AppSettings: ObservableObject {
     static let refreshIntervalKey = "refreshIntervalMinutes"
     static let notificationsEnabledKey = "notificationsEnabled"
+    static let dailyNotificationsEnabledKey = "dailyNotificationsEnabled"
     static let cacheEnabledKey = "cacheEnabled"
     static let historyRetentionLimitKey = "historyRetentionLimit"
     static let notificationThresholdKey = "notificationThresholdPercent"
+    static let dailyNotificationThresholdKey = "dailyNotificationThresholdPercent"
     static let simulationDurationKey = "simulationDurationSeconds"
     static let simulationRestoreDelayKey = "simulationRestoreDelaySeconds"
     static let analyticsBackfillCompletedKey = "analyticsBackfillCompleted"
@@ -40,10 +42,15 @@ final class AppSettings: ObservableObject {
         set { defaults.set(max(1, newValue), forKey: Self.refreshIntervalKey) }
     }
 
-    // Reserved persisted settings. Notifications and response caching are deliberately not enabled yet.
+    // Response caching remains reserved; notification settings are local and opt-in.
     var notificationsEnabled: Bool {
         get { defaults.bool(forKey: Self.notificationsEnabledKey) }
         set { defaults.set(newValue, forKey: Self.notificationsEnabledKey) }
+    }
+
+    var dailyNotificationsEnabled: Bool {
+        get { defaults.bool(forKey: Self.dailyNotificationsEnabledKey) }
+        set { defaults.set(newValue, forKey: Self.dailyNotificationsEnabledKey) }
     }
 
     var cacheEnabled: Bool {
@@ -64,6 +71,11 @@ final class AppSettings: ObservableObject {
     var notificationThresholdPercent: Int {
         get { validated(defaults.integer(forKey: Self.notificationThresholdKey), fallback: 20, range: 1...99) }
         set { defaults.set(validated(newValue, fallback: 20, range: 1...99), forKey: Self.notificationThresholdKey) }
+    }
+
+    var dailyNotificationThresholdPercent: Int {
+        get { validated(defaults.integer(forKey: Self.dailyNotificationThresholdKey), fallback: 80, range: 1...100) }
+        set { defaults.set(validated(newValue, fallback: 80, range: 1...100), forKey: Self.dailyNotificationThresholdKey) }
     }
 
     var simulationDuration: TimeInterval {

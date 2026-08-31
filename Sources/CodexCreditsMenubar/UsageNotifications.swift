@@ -21,6 +21,20 @@ enum UsageNotificationPolicy {
         )
     }
 
+    static func dailyThresholdCrossing(previousUsagePercent: Double?, currentUsagePercent: Double?, threshold: Int, now: Date = Date(), calendar: Calendar = .current) -> UsageNotificationDecision? {
+        guard let currentUsagePercent,
+              currentUsagePercent.isFinite,
+              currentUsagePercent >= Double(threshold),
+              previousUsagePercent ?? 0 < Double(threshold)
+        else { return nil }
+        let day = calendar.startOfDay(for: now).timeIntervalSince1970
+        return UsageNotificationDecision(
+            identifier: "daily-threshold-\(threshold)-\(Int(day))",
+            title: "Daily Codex usage is approaching its target",
+            body: "You have used \(Int(currentUsagePercent.rounded()))% of today’s target."
+        )
+    }
+
     private static func stableIdentifierComponent(_ value: String) -> String {
         value.utf8.reduce(UInt64(1_469_598_103_934_665_603)) { hash, byte in
             (hash ^ UInt64(byte)) &* 1_099_511_628_211
@@ -63,6 +77,22 @@ struct UsageNotificationCoordinator {
         deduplicator.insert(decision.identifier)
         notifier.deliver(decision)
     }
+
+    func considerDaily(previousUsagePercent: Double?, currentUsagePercent: Double?, threshold: Int) {
+        guard let decision = UsageNotificationPolicy.dailyThresholdCrossing(
+            previousUsagePercent: previousUsagePercent,
+            currentUsagePercent: currentUsagePercent,
+            threshold: threshold,
+            now: clock()
+        ), !deduplicator.contains(decision.identifier)
+        else { return }
+        deduplicator.insert(decision.identifier)
+        notifier.deliver(decision)
+    }
+
+    func deliverTest(_ decision: UsageNotificationDecision) {
+        notifier.deliver(decision)
+    }
 }
 
 final class LocalUsageNotifier: NotificationDelivering {
@@ -76,6 +106,7 @@ final class LocalUsageNotifier: NotificationDelivering {
         let content = UNMutableNotificationContent()
         content.title = decision.title
         content.body = decision.body
+        content.sound = .default
         center.add(UNNotificationRequest(identifier: decision.identifier, content: content, trigger: nil), withCompletionHandler: nil)
     }
 }

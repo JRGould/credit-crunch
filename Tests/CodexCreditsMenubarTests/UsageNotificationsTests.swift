@@ -17,6 +17,21 @@ final class UsageNotificationsTests: XCTestCase {
         XCTAssertNil(UsageNotificationPolicy.thresholdCrossing(previous: nil, current: unavailable, threshold: 20))
     }
 
+    func testNotifiesWhenDailyUsageCrossesConfiguredThreshold() {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let decision = UsageNotificationPolicy.dailyThresholdCrossing(
+            previousUsagePercent: 79,
+            currentUsagePercent: 81,
+            threshold: 80,
+            now: now,
+            calendar: calendar
+        )
+        XCTAssertEqual(decision?.title, "Daily Codex usage is approaching its target")
+        XCTAssertEqual(decision?.body, "You have used 81% of today’s target.")
+        XCTAssertNil(UsageNotificationPolicy.dailyThresholdCrossing(previousUsagePercent: 81, currentUsagePercent: 90, threshold: 80, now: now, calendar: calendar))
+    }
+
     func testCoordinatorDeduplicatesUsingInjectedNotifierStoreAndClock() {
         let notifier = RecordingNotifier()
         let store = RecordingDeduplicator()
@@ -24,6 +39,17 @@ final class UsageNotificationsTests: XCTestCase {
         coordinator.consider(previous: snapshot(remaining: 30), current: snapshot(remaining: 20), threshold: 20)
         coordinator.consider(previous: snapshot(remaining: 30), current: snapshot(remaining: 20), threshold: 20)
         XCTAssertEqual(notifier.decisions.count, 1)
+        XCTAssertEqual(store.identifiers.count, 1)
+    }
+
+    func testCoordinatorDeduplicatesDailyAlertsAndDeliversTests() {
+        let notifier = RecordingNotifier()
+        let store = RecordingDeduplicator()
+        let coordinator = UsageNotificationCoordinator(notifier: notifier, deduplicator: store, clock: { Date(timeIntervalSince1970: 0) })
+        coordinator.considerDaily(previousUsagePercent: 79, currentUsagePercent: 80, threshold: 80)
+        coordinator.considerDaily(previousUsagePercent: 79, currentUsagePercent: 80, threshold: 80)
+        coordinator.deliverTest(UsageNotificationDecision(identifier: "test", title: "Test", body: "Working"))
+        XCTAssertEqual(notifier.decisions.map(\.title), ["Daily Codex usage is approaching its target", "Test"])
         XCTAssertEqual(store.identifiers.count, 1)
     }
 

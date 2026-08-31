@@ -481,9 +481,16 @@ struct PaceDashboardModel: Equatable {
 
 final class PaceDashboardView: NSView {
     private let model: PaceDashboardModel
+    private var toolTipTextByTag: [NSView.ToolTipTag: String] = [:]
     private static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "EE"
+        return formatter
+    }()
+    private static let toolTipDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
         return formatter
     }()
 
@@ -492,11 +499,16 @@ final class PaceDashboardView: NSView {
         super.init(frame: NSRect(x: 0, y: 0, width: 360, height: 380))
         setAccessibilityLabel(model.summary)
         setAccessibilityRole(.group)
+        installToolTips()
     }
 
     required init?(coder: NSCoder) { nil }
 
     override var intrinsicContentSize: NSSize { NSSize(width: 360, height: 380) }
+
+    func view(_ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint, userData data: UnsafeMutableRawPointer?) -> String {
+        toolTipTextByTag[tag] ?? "Usage unavailable"
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
@@ -619,6 +631,56 @@ final class PaceDashboardView: NSView {
             "Reset \(DateFormatter.localizedString(from: $0, dateStyle: .short, timeStyle: .short))"
         } ?? "Reset unavailable"
         drawText(resetText, in: NSRect(x: rect.midX, y: rect.maxY - 13, width: rect.width / 2, height: 13), font: .systemFont(ofSize: 10), color: .tertiaryLabelColor, alignment: .right)
+    }
+
+    private func installToolTips() {
+        let content = bounds.insetBy(dx: 16, dy: 14)
+        let chart = NSRect(x: content.minX, y: content.minY + 120, width: content.width, height: 92)
+        let chartPlot = NSRect(x: chart.minX, y: chart.minY + 18, width: chart.width, height: chart.height - 42)
+        let chartMaximum = max(model.dailyTarget ?? 0, model.days.compactMap(\.actualUsage).max() ?? 0, 1)
+        let chartStep = chartPlot.width / CGFloat(max(model.days.count, 1))
+        for (index, day) in model.days.enumerated() {
+            guard let actual = day.actualUsage else { continue }
+            let x = chartPlot.minX + CGFloat(index) * chartStep + 5
+            let width = max(8, chartStep - 10)
+            let height = max(2, chartPlot.height * CGFloat(actual / chartMaximum))
+            addToolTip(
+                for: NSRect(x: x, y: chartPlot.minY, width: width, height: height).insetBy(dx: -2, dy: -2),
+                text: "\(Self.toolTipDateFormatter.string(from: day.day)): \(CreditFormatter.format(actual)) credits used"
+            )
+        }
+
+        let period = NSRect(x: content.minX, y: content.minY + 18, width: content.width, height: 66)
+        let days = model.billingPeriod.days
+        guard !days.isEmpty else { return }
+        let periodMaximum = max(days.compactMap(\.actualUsage).max() ?? 0, days.compactMap(\.previousPeriodUsage).max() ?? 0, 1)
+        let periodPlot = NSRect(x: period.minX, y: period.minY + 2, width: period.width, height: period.height - 20)
+        let periodStep = periodPlot.width / CGFloat(days.count)
+        for (index, day) in days.enumerated() {
+            let x = periodPlot.minX + CGFloat(index) * periodStep
+            let width = max(2, periodStep - 1)
+            let date = Self.toolTipDateFormatter.string(from: day.day)
+            if let previous = day.previousPeriodUsage {
+                let height = max(2, periodPlot.height * 0.72 * CGFloat(previous / periodMaximum))
+                addToolTip(
+                    for: NSRect(x: x, y: periodPlot.minY, width: width, height: height).insetBy(dx: -1, dy: -2),
+                    text: "\(date): \(CreditFormatter.format(previous)) credits in the prior-period comparison"
+                )
+            }
+            if let actual = day.actualUsage {
+                let height = max(3, periodPlot.height * CGFloat(actual / periodMaximum))
+                let currentWidth = max(2, width * 0.62)
+                addToolTip(
+                    for: NSRect(x: x + (width - currentWidth) / 2, y: periodPlot.minY, width: currentWidth, height: height).insetBy(dx: -1, dy: -2),
+                    text: "\(date): \(CreditFormatter.format(actual)) credits in the current period"
+                )
+            }
+        }
+    }
+
+    private func addToolTip(for rect: NSRect, text: String) {
+        let tag = addToolTip(rect, owner: self, userData: nil)
+        toolTipTextByTag[tag] = text
     }
 
     private func drawText(_ text: String, in rect: NSRect, font: NSFont, color: NSColor, alignment: NSTextAlignment = .left) {

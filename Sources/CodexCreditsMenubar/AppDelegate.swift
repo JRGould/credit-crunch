@@ -6,7 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let settings = AppSettings()
     private var historyStore: FileUsageHistoryStore { FileUsageHistoryStore(retentionLimit: settings.historyRetentionLimit) }
     private let analyticsHistoryStore = FileAnalyticsDailyUsageStore()
-    private let notificationCoordinator = UsageNotificationCoordinator(notifier: LocalUsageNotifier(), deduplicator: UserDefaultsNotificationDeduplicator())
+    private let notificationCoordinator: UsageNotificationCoordinator
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private var timer: Timer?
     private var lastUpdated: Date?
@@ -16,6 +16,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var simulatedUsagePercent: Double?
     private var simulationTask: Task<Void, Never>?
     private var analyticsBackfillTask: Task<Void, Never>?
+
+    init(notificationCoordinator: UsageNotificationCoordinator? = nil) {
+        self.notificationCoordinator = notificationCoordinator ?? UsageNotificationCoordinator(
+            notifier: LocalUsageNotifier(),
+            deduplicator: UserDefaultsNotificationDeduplicator()
+        )
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem.button?.imagePosition = .imageOnly
@@ -48,9 +56,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 latestSpendControl = data
                 lastUpdated = Date()
                 let snapshot = UsageSnapshot(spendControl: data, collectedAt: lastUpdated!)
-                let previous = try? historyStore.load().last
+                let previousSnapshots = (try? historyStore.load()) ?? []
+                let previous = previousSnapshots.last
+                let previousDailyUsagePercent = StatusIconPresentation.dailyTargetUsagePercent(
+                    UsagePresentation.paceDashboard(snapshots: previousSnapshots)
+                )
                 try? historyStore.record(snapshot)
                 if settings.notificationsEnabled { notificationCoordinator.consider(previous: previous, current: snapshot, threshold: settings.notificationThresholdPercent) }
+                if settings.dailyNotificationsEnabled {
+                    let currentSnapshots = (try? historyStore.load()) ?? (previousSnapshots + [snapshot])
+                    let currentDailyUsagePercent = StatusIconPresentation.dailyTargetUsagePercent(
+                        UsagePresentation.paceDashboard(snapshots: currentSnapshots)
+                    )
+                    notificationCoordinator.considerDaily(
+                        previousUsagePercent: previousDailyUsagePercent,
+                        currentUsagePercent: currentDailyUsagePercent,
+                        threshold: settings.dailyNotificationThresholdPercent
+                    )
+                }
                 refreshError = nil
             } catch {
                 refreshError = error.localizedDescription
@@ -118,6 +141,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(.separator())
         menu.addItem(withTitle: "Refresh Now", action: #selector(refresh), keyEquivalent: "r").target = self
         menu.addItem(withTitle: "Preferences…", action: #selector(showPreferences), keyEquivalent: ",").target = self
+        let debugItem = NSMenuItem(title: "Debug", action: nil, keyEquivalent: "")
+        let debugMenu = NSMenu(title: "Debug")
+        debugMenu.addItem(withTitle: "Send Daily Test Notification", action: #selector(sendDailyTestNotification), keyEquivalent: "").target = self
+        debugMenu.addItem(withTitle: "Send Period Test Notification", action: #selector(sendPeriodTestNotification), keyEquivalent: "").target = self
+        debugItem.submenu = debugMenu
+        menu.addItem(debugItem)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit CreditCrunch", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         statusItem.menu = menu
@@ -155,12 +184,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         popup.addItems(withTitles: values.map { "Refresh every \($0) minutes" })
         popup.selectItem(at: values.firstIndex(of: settings.refreshIntervalMinutes) ?? 1)
         popup.target = self; popup.action = #selector(changeInterval(_:))
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 430, height: 470)); view.addSubview(popup)
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 430, height: 550)); view.addSubview(popup)
         let note = NSTextField(labelWithString: "Credentials are read only when refreshing and are never stored.")
         note.frame = NSRect(x: 20, y: 18, width: 390, height: 20); note.font = .systemFont(ofSize: 11); view.addSubview(note)
-        let notifications = NSButton(checkboxWithTitle: "Notify when remaining limit is low", target: self, action: #selector(changeNotifications(_:)))
+        let notificationHeading = NSTextField(labelWithString: "Notifications")
+        notificationHeading.frame = NSRect(x: 20, y: 520, width: 240, height: 22); notificationHeading.font = .boldSystemFont(ofSize: 13); view.addSubview(notificationHeading)
+        let dailyNotifications = NSButton(checkboxWithTitle: "Notify as daily usage approaches its target", target: self, action: #selector(changeDailyNotifications(_:)))
+        dailyNotifications.frame = NSRect(x: 20, y: 484, width: 350, height: 24); dailyNotifications.state = settings.dailyNotificationsEnabled ? .on : .off; view.addSubview(dailyNotifications)
+        addLabel("Daily alert threshold (% used)", y: 442, to: view)
+        addField(value: settings.dailyNotificationThresholdPercent, y: 437, tag: 5, to: view)
+        let notifications = NSButton(checkboxWithTitle: "Notify as billing-period usage approaches its limit", target: self, action: #selector(changeNotifications(_:)))
         notifications.frame = NSRect(x: 20, y: 404, width: 350, height: 24); notifications.state = settings.notificationsEnabled ? .on : .off; view.addSubview(notifications)
-        addLabel("Notification threshold (% remaining)", y: 362, to: view)
+        addLabel("Period alert threshold (% remaining)", y: 362, to: view)
         addField(value: settings.notificationThresholdPercent, y: 357, tag: 1, to: view)
         addLabel("History retention (samples)", y: 318, to: view)
         addField(value: settings.historyRetentionLimit, y: 313, tag: 2, to: view)
@@ -174,8 +209,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         addField(value: Int(settings.simulationRestoreDelay), y: 133, tag: 4, to: view)
         let simulate = NSButton(title: "Run Simulation", target: self, action: #selector(startUsageSimulation))
         simulate.frame = NSRect(x: 20, y: 92, width: 150, height: 30); view.addSubview(simulate)
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 430, height: 470), styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "CreditCrunch Preferences"; window.contentView = view; window.delegate = self; window.center(); window.makeKeyAndOrderFront(nil)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 430, height: 550), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.title = "CreditCrunch Preferences"; window.contentView = view; window.delegate = self; window.center(); NSApp.activate(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
         preferencesWindow = window
     }
 
@@ -192,10 +227,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    @objc private func changeDailyNotifications(_ sender: NSButton) {
+        settings.dailyNotificationsEnabled = sender.state == .on
+        guard settings.dailyNotificationsEnabled else { return }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { [weak self] granted, _ in
+            if !granted { Task { @MainActor in self?.settings.dailyNotificationsEnabled = false } }
+        }
+    }
+
+    @objc private func sendDailyTestNotification() {
+        sendTestNotification(title: "CreditCrunch daily alert test", body: "Daily target notifications are working.")
+    }
+
+    @objc private func sendPeriodTestNotification() {
+        sendTestNotification(title: "CreditCrunch period alert test", body: "Billing-period notifications are working.")
+    }
+
+    private func sendTestNotification(title: String, body: String) {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { [weak self] granted, _ in
+            guard granted else { return }
+            Task { @MainActor in
+                self?.notificationCoordinator.deliverTest(UsageNotificationDecision(identifier: "test-\(UUID().uuidString)", title: title, body: body))
+            }
+        }
+    }
+
     @objc private func changeNumberSetting(_ sender: NSTextField) {
         guard let value = Int(sender.stringValue) else { sender.stringValue = valueForField(sender.tag); return }
         switch sender.tag {
         case 1: settings.notificationThresholdPercent = value
+        case 5: settings.dailyNotificationThresholdPercent = value
         case 2: settings.historyRetentionLimit = value
         case 3, 4:
             let duration = sender.tag == 3 ? TimeInterval(value) : settings.simulationDuration
@@ -233,6 +294,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func valueForField(_ tag: Int) -> String {
         switch tag {
         case 1: return String(settings.notificationThresholdPercent)
+        case 5: return String(settings.dailyNotificationThresholdPercent)
         case 2: return String(settings.historyRetentionLimit)
         case 3: return String(Int(settings.simulationDuration))
         case 4: return String(Int(settings.simulationRestoreDelay))
@@ -240,8 +302,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
-    func windowWillClose(_ notification: Notification) {
-        if notification.object as? NSWindow === preferencesWindow { preferencesWindow = nil }
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard sender === preferencesWindow else { return true }
+        sender.orderOut(nil)
+        return false
     }
 
     private static let dateFormatter: DateFormatter = { let formatter = DateFormatter(); formatter.dateStyle = .none; formatter.timeStyle = .short; return formatter }()
