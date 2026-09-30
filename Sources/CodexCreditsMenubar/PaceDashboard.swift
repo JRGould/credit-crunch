@@ -32,6 +32,26 @@ struct PaceDashboardBillingPeriod: Equatable {
     let resetText: String
     let days: [PaceDashboardPeriodDay]
 
+    func resetBudgetLines(remainingCredits: Double?, now: Date = Date()) -> [String] {
+        var time = "unavailable"
+        var target = "unavailable"
+        if let seconds = resetAt?.timeIntervalSince(now), seconds.isFinite {
+            if seconds <= 0 {
+                time = "awaiting refresh"
+            } else if seconds < Double(Int.max) {
+                let minutes = Int(ceil(seconds / 60))
+                time = "\(minutes / 60)h \(minutes % 60)m"
+                if let remainingCredits, remainingCredits.isFinite {
+                    let hourly = max(0, remainingCredits) / (seconds / 3600)
+                    if hourly.isFinite {
+                        target = "\(CreditFormatter.format(hourly)) credits/hour"
+                    }
+                }
+            }
+        }
+        return ["Time until reset: \(time)", "Target until reset: \(target)"]
+    }
+
     static let unavailable = PaceDashboardBillingPeriod(
         totalUsage: nil,
         periodLimit: nil,

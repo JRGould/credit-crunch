@@ -3,6 +3,38 @@ import XCTest
 @testable import CodexCreditsMenubar
 
 final class UsagePresentationTests: XCTestCase {
+    func testResetBudgetUsesElapsedHoursAndHandlesUnavailableOrExhaustedData() throws {
+        let now = ISO8601DateFormatter().date(from: "2026-09-30T20:00:00Z")!
+        let cases: [(String, TimeInterval, String, String)] = [
+            (#"{"limit":"24000","used":"19200","resets_at":1790812800}"#, 0, "4h 0m", "1.2k credits/hour"),
+            (#"{"limit":100,"used":100,"reset_at":"2026-10-01T00:00:00Z"}"#, 0, "4h 0m", "0 credits/hour"),
+            (#"{"limit":0,"used":0,"reset_at":"2026-10-01T00:00:00Z"}"#, 0, "4h 0m", "0 credits/hour"),
+            (#"{"limit":100,"used":110,"reset_at":"2026-10-01T00:00:00Z"}"#, 0, "4h 0m", "0 credits/hour"),
+            (#"{"limit":null,"used":null,"reset_at":"2026-10-01T00:00:00Z"}"#, 0, "4h 0m", "unavailable"),
+            (#"{}"#, 0, "unavailable", "unavailable"),
+            (#"{"limit":100,"used":50,"reset_at":null}"#, 0, "unavailable", "unavailable"),
+            (#"{"limit":100,"used":50,"reset_at":"invalid"}"#, 0, "unavailable", "unavailable"),
+            (#"{"remaining":600,"reset_at":"2026-09-30T17:00:00-07:00"}"#, 0, "4h 0m", "150 credits/hour"),
+            (#"{"remaining":600,"reset_at":"2026-10-01T00:00:00Z"}"#, 14_400, "awaiting refresh", "unavailable"),
+            (#"{"remaining":600,"reset_at":"2026-10-01T00:00:00Z"}"#, 14_401, "awaiting refresh", "unavailable"),
+            (#"{"remaining":1,"reset_at":"2026-10-01T00:00:00Z"}"#, 14_399, "0h 1m", "3.6k credits/hour")
+        ]
+        for zone in ["UTC", "America/Los_Angeles", "Asia/Tokyo"] {
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(identifier: zone)!
+            for (fields, offset, time, target) in cases {
+                let control = try UsageService.parseSpendControl(Data("{\"spend_control\":{\"individual_limit\":\(fields)}}".utf8))
+                let dashboard = UsagePresentation.paceDashboard(
+                    snapshots: [UsageSnapshot(spendControl: control, collectedAt: now)],
+                    now: now.addingTimeInterval(offset), calendar: calendar
+                )
+                XCTAssertEqual(dashboard.billingPeriod.resetBudgetLines(remainingCredits: dashboard.remainingCredits, now: now.addingTimeInterval(offset)), [
+                    "Time until reset: \(time)", "Target until reset: \(target)"
+                ], "\(zone): \(fields), offset \(offset)")
+            }
+        }
+    }
+
     func testShowsExplicitInsufficientStatesWithoutHistory() {
         XCTAssertEqual(UsagePresentation.metricLines(snapshots: []), ["History: no local samples yet"])
         XCTAssertEqual(UsagePresentation.historyLines(snapshots: []), ["Recent history: no local samples yet"])

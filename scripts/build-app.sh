@@ -2,7 +2,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-app="$root/dist/CreditCrunch.app"
+app="${CREDITCRUNCH_APP_PATH:-$root/dist/CreditCrunch.app}"
 build="$root/.build/release/CodexCreditsMenubar"
 
 cd "$root"

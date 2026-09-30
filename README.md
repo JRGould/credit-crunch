@@ -37,7 +37,7 @@ open "/Applications/CreditCrunch.app"
 open "/Applications/CreditCrunch.app"
 ```
 
-The app has no Dock icon. Its Applications/Finder icon uses the bundled CreditCrunch artwork, while its menu-bar icon uses a 16-dot usage progress ring. Dots fill clockwise from 12:00 (25% reaches 3:00; 50% reaches 6:00); the color starts green at 0% usage, moves through yellow, and reaches red near 100% usage. Its menu shows spend limit, spent, remaining, remaining percentage, reset value when provided, last update, Refresh Now, Preferences, and Quit.
+The app has no Dock icon. Its Applications/Finder icon uses the bundled CreditCrunch artwork, while its menu-bar icon uses a 16-dot usage progress ring. Dots fill clockwise from 12:00 (25% reaches 3:00; 50% reaches 6:00); the color starts green at 0% usage, moves through yellow, and reaches red near 100% usage. Its menu shows daily pacing, billing-period usage, remaining credits, time until reset, target credits/hour until reset, last update, Refresh Now, Preferences, and Quit. The hourly target divides the last fetched remaining balance by the hours until reset and updates when you open the menu; it stays separate from the daily pacing target.
 
 ## Configuration
 

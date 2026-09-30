@@ -8,7 +8,7 @@ func notificationPreferencesAvailable(for status: UNAuthorizationStatus) -> Bool
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNotificationCenterDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate, UNUserNotificationCenterDelegate {
     private let settings = AppSettings()
     private var historyStore: FileUsageHistoryStore { FileUsageHistoryStore(retentionLimit: settings.historyRetentionLimit) }
     private let analyticsHistoryStore = FileAnalyticsDailyUsageStore()
@@ -126,7 +126,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         }
     }
 
-    private func rebuildMenu() {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        rebuildMenu(menu: menu)
+    }
+
+    private func rebuildMenu(menu: NSMenu = NSMenu()) {
         let snapshots = (try? historyStore.load()) ?? []
         let importedDailyUsage = (try? analyticsHistoryStore.load()) ?? []
         let dashboard = latestSpendControl.map { _ in
@@ -139,13 +143,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             dailyTargetUsagePercent: dashboard.flatMap(StatusIconPresentation.dailyTargetUsagePercent),
             simulatedBillingUsagePercent: simulatedUsagePercent
         )
-        let menu = NSMenu()
+        menu.removeAllItems()
+        menu.delegate = self
         if let dashboard {
             let dashboardView = PaceDashboardView(model: dashboard)
             let dashboardItem = NSMenuItem()
             dashboardItem.view = dashboardView
             dashboardItem.setAccessibilityLabel(dashboardView.accessibilityLabel())
             menu.addItem(dashboardItem)
+            for line in dashboard.billingPeriod.resetBudgetLines(remainingCredits: dashboard.remainingCredits) {
+                menu.addItem(withTitle: line, action: nil, keyEquivalent: "")
+            }
         } else {
             menu.addItem(withTitle: refreshError ?? "Loading spend-control usage…", action: nil, keyEquivalent: "")
         }

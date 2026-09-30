@@ -35,6 +35,7 @@ final class AppDelegateTests: XCTestCase {
         delegate.presentPreferences(notificationAuthorizationStatus: .authorized)
         XCTAssertTrue(window.isVisible)
         XCTAssertTrue(window === NSApp.windows.first(where: { $0.delegate === delegate }))
+        window.isReleasedWhenClosed = false
         window.delegate = nil
         window.close()
     }
